@@ -6,10 +6,7 @@ import main.com.pyratron.pugmatt.bedrockconnect.config.Custom.CustomEntry;
 import main.com.pyratron.pugmatt.bedrockconnect.config.Custom.CustomServer;
 import main.com.pyratron.pugmatt.bedrockconnect.config.Custom.CustomServerGroup;
 import main.com.pyratron.pugmatt.bedrockconnect.logging.LogColors;
-import main.com.pyratron.pugmatt.bedrockconnect.server.gui.MainFormButton;
-import main.com.pyratron.pugmatt.bedrockconnect.server.gui.ManageFormButton;
-import main.com.pyratron.pugmatt.bedrockconnect.server.gui.UIComponents;
-import main.com.pyratron.pugmatt.bedrockconnect.server.gui.UIForms;
+import main.com.pyratron.pugmatt.bedrockconnect.server.gui.*;
 
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.protocol.bedrock.BedrockServerSession;
@@ -21,6 +18,7 @@ import org.cloudburstmc.protocol.bedrock.util.ChainValidationResult;
 import org.cloudburstmc.protocol.bedrock.util.ChainValidationResult.IdentityData;
 import org.cloudburstmc.protocol.bedrock.util.EncryptionUtils;
 import org.cloudburstmc.protocol.common.PacketSignal;
+
 import java.security.PublicKey;
 import java.util.*;
 import java.net.InetAddress;
@@ -40,7 +38,7 @@ public class PacketHandler implements BedrockPacketHandler {
     // Used for server icon fix
     private ScheduledThreadPoolExecutor executor = null;
 
-     public PacketHandler(BedrockServerSession session, boolean packetListening) {
+    public PacketHandler(BedrockServerSession session, boolean packetListening) {
         this.session = session;
     }
 
@@ -50,7 +48,7 @@ public class PacketHandler implements BedrockPacketHandler {
 
     public String getIP(String hostname) {
         try {
-            if(BedrockConnect.getConfig().canFetchFeaturedIps() || BedrockConnect.getConfig().canFetchIps()) {
+            if (BedrockConnect.getConfig().canFetchFeaturedIps() || BedrockConnect.getConfig().canFetchIps()) {
                 InetAddress host = InetAddress.getByName(hostname);
                 String address = host.getHostAddress();
                 BedrockConnect.logger.debug("Retrieved " + address + " host address from hostname " + hostname);
@@ -103,8 +101,7 @@ public class PacketHandler implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(AnimatePacket packet) {
-        if(packet.getAction() == AnimatePacket.Action.SWING_ARM)
-            player.movementOpen();
+        if (packet.getAction() == AnimatePacket.Action.SWING_ARM) player.movementOpen();
         return PacketSignal.HANDLED;
     }
 
@@ -114,282 +111,306 @@ public class PacketHandler implements BedrockPacketHandler {
         player.resetMovementOpen();
 
         switch (packet.getFormId()) {
-                case UIForms.MOTD:
-                    // Store datetime of when motd was viewed, if we need it for tracking when to show it again
-                    if (BedrockConnect.getConfig().isMotdCooldownEnabled()) {
-                        BedrockConnect.getDataUtil().setViewedMotd(player.getUuid());
-                    }
+            case UIForms.MOTD:
+                // Store datetime of when motd was viewed, if we need it for tracking when to show it again
+                if (BedrockConnect.getConfig().isMotdCooldownEnabled()) {
+                    BedrockConnect.getDataUtil().setViewedMotd(player.getUuid());
+                }
+                player.openForm(UIForms.MAIN);
+                break;
+            case UIForms.MAIN:
+                // Re-open window if closed
+                if (packet.getFormData() == null || packet.getFormData().contains("null")) {
+                    if (player.getCurrentForm() != packet.getFormId()) return PacketSignal.HANDLED;
                     player.openForm(UIForms.MAIN);
-                    break;
-                case UIForms.MAIN:
-                    // Re-open window if closed
+                } else { // If selecting button
+                    int chosen = Integer.parseInt(packet.getFormData().replaceAll("\\s+", ""));
+
+                    CustomEntry[] customServers = BedrockConnect.getConfig().getCustomServers();
+                    List<String> playerServers = player.getServerList();
+
+                    MainFormButton button = UIForms.getMainFormButton(chosen, customServers, playerServers);
+
+                    int serverIndex = UIForms.getServerIndex(chosen, customServers, playerServers);
+
+                    switch (button) {
+                        case CONNECT:
+                            player.openForm(UIForms.DIRECT_CONNECT);
+                            break;
+                        case MANAGE:
+                            player.openForm(UIForms.MANAGE_SERVER);
+                            break;
+                        case EXIT:
+                            player.disconnect(BedrockConnect.getConfig().getLanguage().getWording("disconnect", "exit"));
+                            break;
+                        case USER_SERVER:
+                            String address = player.getServerList().get(serverIndex);
+
+                            if (address.split(":").length > 1) {
+                                String ip = address.split(":")[0];
+                                String port = address.split(":")[1];
+
+                                transfer(ip, Integer.parseInt(port));
+                            } else {
+                                player.createError((BedrockConnect.getConfig().getLanguage().getWording("error", "invalidUserServer")));
+                            }
+                            break;
+                        case CUSTOM_SERVER:
+                            CustomEntry server = customServers[serverIndex - playerServers.size()];
+
+                            if (server instanceof CustomServer) {
+                                transfer(((CustomServer) server).getAddress(), ((CustomServer) server).getPort());
+                            } else if (server instanceof CustomServerGroup) {
+                                player.setSelectedGroup(serverIndex - playerServers.size());
+                                player.openForm(UIForms.SERVER_GROUP);
+                            }
+                            break;
+                        case NG_SERVER:
+                            int featuredServer = serverIndex - playerServers.size() - customServers.length;
+
+                            switch (featuredServer) {
+                                case 0: // Hub
+                                    transfer(getIP("bedrock.nationsglory.fr"), 19132);
+                                    break;
+                                case 1: // Alpha
+                                    transfer(getIP("bedrock.nationsglory.fr"), 19100);
+                                    break;
+                                case 2: // Sigma
+                                    transfer(getIP("bedrock.nationsglory.fr"), 19102);
+                                    break;
+                                case 3: //   Omega
+                                    transfer(getIP("bedrock.nationsglory.fr"), 19103);
+                                    break;
+                                case 4: // Delta
+                                    transfer(getIP("bedrock.nationsglory.fr"), 19101);
+                                    break;
+                                case 5: // Epsilon
+                                    transfer(getIP("bedrock.nationsglory.fr"), 19104);
+                                    break;
+                            }
+                            break;
+                        case OTHER_BUTTON:
+                            player.openForm(UIForms.OTHER);
+                            break;
+                    }
+                }
+                break;
+            case UIForms.SERVER_GROUP:
+                if (packet.getFormData() == null || packet.getFormData().contains("null")) {
+                    if (player.getCurrentForm() != packet.getFormId()) return PacketSignal.HANDLED;
+                    player.openForm(UIForms.MAIN);
+                } else {
+                    int chosen = Integer.parseInt(packet.getFormData().replaceAll("\\s+", ""));
+
+                    CustomEntry[] customServers = BedrockConnect.getConfig().getCustomServers();
+                    CustomServerGroup group = (CustomServerGroup) customServers[player.getSelectedGroup()];
+
+                    if (chosen == 0) {
+                        player.openForm(UIForms.MAIN);
+                    } else {
+                        CustomServer server = group.getServers().get(chosen - 1);
+                        transfer(server.getAddress(), server.getPort());
+                    }
+                }
+                break;
+            case UIForms.MANAGE_SERVER:
+                if (packet.getFormData() == null) {
+                    if (player.getCurrentForm() != packet.getFormId()) return PacketSignal.HANDLED;
+                    player.openForm(UIForms.MAIN);
+                } else {
+                    int chosen = Integer.parseInt(packet.getFormData().replaceAll("\\s+", ""));
+
+                    ManageFormButton button = UIForms.getManageFormButton(chosen);
+
+                    switch (button) {
+                        case ADD:
+                            player.openForm(UIForms.ADD_SERVER);
+                            break;
+                        case EDIT:
+                            player.openForm(UIForms.EDIT_CHOOSE_SERVER);
+                            break;
+                        case REMOVE:
+                            player.openForm(UIForms.REMOVE_SERVER);
+                            break;
+                    }
+                }
+                break;
+            case UIForms.ADD_SERVER:
+                try {
                     if (packet.getFormData() == null || packet.getFormData().contains("null")) {
-                        if(player.getCurrentForm() != packet.getFormId())
-                            return PacketSignal.HANDLED;
-                        player.openForm(UIForms.MAIN);
-                    } else { // If selecting button
-                        int chosen = Integer.parseInt(packet.getFormData().replaceAll("\\s+",""));
-
-                        CustomEntry[] customServers = BedrockConnect.getConfig().getCustomServers();
-                        List<String> playerServers = player.getServerList();
-
-                        MainFormButton button = UIForms.getMainFormButton(chosen, customServers, playerServers);
-
-                        int serverIndex = UIForms.getServerIndex(chosen, customServers, playerServers);
-
-                        switch(button) {
-                            case CONNECT:
-                                player.openForm(UIForms.DIRECT_CONNECT);
-                                break;
-                            case MANAGE:
-                                player.openForm(UIForms.MANAGE_SERVER);
-                                break;
-                            case EXIT:
-                                player.disconnect(BedrockConnect.getConfig().getLanguage().getWording("disconnect", "exit"));
-                                break;
-                            case USER_SERVER:
-                                String address = player.getServerList().get(serverIndex);
-
-                                if (address.split(":").length > 1) {
-                                    String ip = address.split(":")[0];
-                                    String port = address.split(":")[1];
-
-                                    transfer(ip, Integer.parseInt(port));
-                                } else {
-                                    player.createError((BedrockConnect.getConfig().getLanguage().getWording("error", "invalidUserServer")));
-                                }
-                                break;
-                            case CUSTOM_SERVER:
-                                CustomEntry server = customServers[serverIndex - playerServers.size()];
-
-                                if(server instanceof CustomServer) {
-                                    transfer(((CustomServer)server).getAddress(), ((CustomServer)server).getPort());
-                                } else if(server instanceof CustomServerGroup) {
-                                    player.setSelectedGroup(serverIndex - playerServers.size());
-                                    player.openForm(UIForms.SERVER_GROUP);
-                                }
-                                break;
-                            case NG_SERVER:
-                                int featuredServer = serverIndex - playerServers.size() - customServers.length;
-
-                                switch (featuredServer) {
-                                    case 0: // Hub
-                                        transfer(getIP("bedrock.nationsglory.fr"), 19132);
-                                        break;
-                                    case 1: // Alpha
-                                        transfer(getIP("bedrock.nationsglory.fr"), 19100);
-                                        break;
-                                    case 2: // Sigma
-                                        transfer(getIP("bedrock.nationsglory.fr"), 19102);
-                                        break;
-                                    case 3: //   Omega
-                                        transfer(getIP("bedrock.nationsglory.fr"), 19103);
-                                        break;
-                                    case 4: // Delta
-                                        transfer(getIP("bedrock.nationsglory.fr"), 19101);
-                                        break;
-                                    case 5: // Epsilon
-                                        transfer(getIP("bedrock.nationsglory.fr"), 19104);
-                                        break;
-                                }
-                                break;
-
-                        }
-                    }
-                    break;
-                case UIForms.SERVER_GROUP:
-                    if(packet.getFormData() == null || packet.getFormData().contains("null")) {
-                        if(player.getCurrentForm() != packet.getFormId())
-                            return PacketSignal.HANDLED;
-                        player.openForm(UIForms.MAIN);
-                    }
-                    else {
-                        int chosen = Integer.parseInt(packet.getFormData().replaceAll("\\s+",""));
-
-                        CustomEntry[] customServers = BedrockConnect.getConfig().getCustomServers();
-                        CustomServerGroup group = (CustomServerGroup) customServers[player.getSelectedGroup()];
-
-                        if(chosen == 0) {
-                            player.openForm(UIForms.MAIN);
-                        } else {
-                            CustomServer server = group.getServers().get(chosen - 1);
-                            transfer(server.getAddress(), server.getPort());
-                        }
-                    }
-                    break;
-                case UIForms.MANAGE_SERVER:
-                    if(packet.getFormData() == null) {
-                        if(player.getCurrentForm() != packet.getFormId())
-                            return PacketSignal.HANDLED;
-                        player.openForm(UIForms.MAIN);
-                    }
-                    else {
-                        int chosen = Integer.parseInt(packet.getFormData().replaceAll("\\s+",""));
-
-                        ManageFormButton button = UIForms.getManageFormButton(chosen);
-
-                        switch(button) {
-                            case ADD:
-                                player.openForm(UIForms.ADD_SERVER);
-                                break;
-                            case EDIT:
-                                player.openForm(UIForms.EDIT_CHOOSE_SERVER);
-                                break;
-                            case REMOVE:
-                                player.openForm(UIForms.REMOVE_SERVER);
-                                break;
-                        }
-                    }
-                    break;
-                case UIForms.ADD_SERVER:
-                    try {
-                        if(packet.getFormData() == null || packet.getFormData().contains("null")) {
-                            if(player.getCurrentForm() != packet.getFormId())
-                                return PacketSignal.HANDLED;
-                            player.openForm(UIForms.MANAGE_SERVER);
-                        }
-                        else {
-                            ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
-                            if(data.size() > 1) {
-                                // Remove any whitespace
-                                data = UIComponents.cleanAddress(data);
-
-                                String address = data.get(0);
-                                String port = data.get(1);
-                                String name = data.get(2);
-
-                                if(UIComponents.validateServerInfo(address, port, name, player)) {
-                                    player.addServer(address, port, name);
-
-                                    player.openForm(UIForms.MANAGE_SERVER);
-                                }
-                            }
-                        }
-                    } catch(Exception e) {
-                        player.createError(BedrockConnect.getConfig().getLanguage().getWording("error", "invalidServerConnect"));
-                    }
-                    break;
-                case UIForms.DIRECT_CONNECT:
-                    try {
-                        if(packet.getFormData() == null || packet.getFormData().contains("null")) {
-                            if(player.getCurrentForm() != packet.getFormId())
-                                return PacketSignal.HANDLED;
-                            player.openForm(UIForms.MAIN);
-                        }
-                        else {
-                            ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
-                            if(data.size() > 1) {
-                                // Remove any whitespace
-                                data = UIComponents.cleanAddress(data);
-
-                                String address = data.get(0);
-                                String port = data.get(1);
-                                String name = data.get(2);
-
-                                if(UIComponents.validateServerInfo(address, port, name, player)) {
-                                    boolean addServer = Boolean.parseBoolean(data.get(3));
-                                    if (addServer) {
-                                        if(player.addServer(address, port, name)) {
-                                            transfer(address.replace(" ", ""), Integer.parseInt(port));
-                                        }
-                                    } else {
-                                        transfer(address.replace(" ", ""), Integer.parseInt(port));
-                                    }
-                                }
-                            }
-                        }
-                    } catch(Exception e) {
-                        player.createError((BedrockConnect.getConfig().getLanguage().getWording("error", "invalidServerConnect")));
-                    }
-                    break;
-                case UIForms.EDIT_CHOOSE_SERVER:
-                    try {
-                        if (packet.getFormData() == null || packet.getFormData().contains("null")) {
-                            if (player.getCurrentForm() != packet.getFormId())
-                                return PacketSignal.HANDLED;
-                            player.openForm(UIForms.MANAGE_SERVER);
-                        } else {
-                            ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
-
-                            int chosen = Integer.parseInt(data.get(0));
-
-                            String server = player.getServerList().get(chosen);
-
-                            String[] serverInfo = UIComponents.validateAddress(server, player);
-
-                            if (serverInfo != null) {
-                                String ip = serverInfo[0];
-                                String port = serverInfo[1];
-                                String name = serverInfo.length > 2 ? serverInfo[2] : "";
-
-                                player.setEditingServer(chosen);
-
-                                session.sendPacketImmediately(UIForms.createEditServer(ip, port, name));
-                                player.setCurrentForm(UIForms.EDIT_SERVER);
-                            }
-                        }
-                    } catch(Exception e) {
-                        player.createError((BedrockConnect.getConfig().getLanguage().getWording("error", "invalidServerEdit")));
-                    }
-                    break;
-                case UIForms.EDIT_SERVER:
-                    if(packet.getFormData() == null || packet.getFormData().contains("null")) {
-                        if(player.getCurrentForm() != packet.getFormId())
-                            return PacketSignal.HANDLED;
-                        player.openForm(UIForms.EDIT_CHOOSE_SERVER);
-                    }
-                    else {
+                        if (player.getCurrentForm() != packet.getFormId()) return PacketSignal.HANDLED;
+                        player.openForm(UIForms.MANAGE_SERVER);
+                    } else {
                         ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
-                        if(data.size() > 1) {
+                        if (data.size() > 1) {
                             // Remove any whitespace
-                            data.set(0, data.get(0).replaceAll("\\s",""));
-                            data.set(1, data.get(1).replaceAll("\\s",""));
+                            data = UIComponents.cleanAddress(data);
 
                             String address = data.get(0);
                             String port = data.get(1);
                             String name = data.get(2);
 
-                            if(UIComponents.validateServerInfo(address, port, name, player)) {
-                                String value = address + ":" + port;
-                                if(!name.isEmpty()) value += ":" + name;
+                            if (UIComponents.validateServerInfo(address, port, name, player)) {
+                                player.addServer(address, port, name);
 
-                                List<String> servers = player.getServerList();
-                                servers.set(player.getEditingServer(), value);
-
-                                player.setServerList(servers);
-
-                                player.openForm(UIForms.EDIT_CHOOSE_SERVER);
+                                player.openForm(UIForms.MANAGE_SERVER);
                             }
                         }
                     }
-                    break;
-                case UIForms.REMOVE_SERVER:
-                    try {
-                        if(packet.getFormData() == null || packet.getFormData().contains("null")) {
-                            if(player.getCurrentForm() != packet.getFormId())
-                                return PacketSignal.HANDLED;
-                            player.openForm(UIForms.MANAGE_SERVER);
+                } catch (Exception e) {
+                    player.createError(BedrockConnect.getConfig().getLanguage().getWording("error", "invalidServerConnect"));
+                }
+                break;
+            case UIForms.DIRECT_CONNECT:
+                try {
+                    if (packet.getFormData() == null || packet.getFormData().contains("null")) {
+                        if (player.getCurrentForm() != packet.getFormId()) return PacketSignal.HANDLED;
+                        player.openForm(UIForms.MAIN);
+                    } else {
+                        ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
+                        if (data.size() > 1) {
+                            // Remove any whitespace
+                            data = UIComponents.cleanAddress(data);
+
+                            String address = data.get(0);
+                            String port = data.get(1);
+                            String name = data.get(2);
+
+                            if (UIComponents.validateServerInfo(address, port, name, player)) {
+                                boolean addServer = Boolean.parseBoolean(data.get(3));
+                                if (addServer) {
+                                    if (player.addServer(address, port, name)) {
+                                        transfer(address.replace(" ", ""), Integer.parseInt(port));
+                                    }
+                                } else {
+                                    transfer(address.replace(" ", ""), Integer.parseInt(port));
+                                }
+                            }
                         }
-                        else {
-                            ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
-
-                            int chosen = Integer.parseInt(data.get(0));
-
-                            List<String> serverList = player.getServerList();
-                            serverList.remove(chosen);
-
-                            player.setServerList(serverList);
-
-                            player.openForm(UIForms.MANAGE_SERVER);
-                        }
-                    } catch(Exception e) {
-                        player.createError((BedrockConnect.getConfig().getLanguage().getWording("error", "invalidServerRemove")));
                     }
+                } catch (Exception e) {
+                    player.createError((BedrockConnect.getConfig().getLanguage().getWording("error", "invalidServerConnect")));
+                }
+                break;
+            case UIForms.EDIT_CHOOSE_SERVER:
+                try {
+                    if (packet.getFormData() == null || packet.getFormData().contains("null")) {
+                        if (player.getCurrentForm() != packet.getFormId()) return PacketSignal.HANDLED;
+                        player.openForm(UIForms.MANAGE_SERVER);
+                    } else {
+                        ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
+
+                        int chosen = Integer.parseInt(data.get(0));
+
+                        String server = player.getServerList().get(chosen);
+
+                        String[] serverInfo = UIComponents.validateAddress(server, player);
+
+                        if (serverInfo != null) {
+                            String ip = serverInfo[0];
+                            String port = serverInfo[1];
+                            String name = serverInfo.length > 2 ? serverInfo[2] : "";
+
+                            player.setEditingServer(chosen);
+
+                            session.sendPacketImmediately(UIForms.createEditServer(ip, port, name));
+                            player.setCurrentForm(UIForms.EDIT_SERVER);
+                        }
+                    }
+                } catch (Exception e) {
+                    player.createError((BedrockConnect.getConfig().getLanguage().getWording("error", "invalidServerEdit")));
+                }
+                break;
+            case UIForms.EDIT_SERVER:
+                if (packet.getFormData() == null || packet.getFormData().contains("null")) {
+                    if (player.getCurrentForm() != packet.getFormId()) return PacketSignal.HANDLED;
+                    player.openForm(UIForms.EDIT_CHOOSE_SERVER);
+                } else {
+                    ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
+                    if (data.size() > 1) {
+                        // Remove any whitespace
+                        data.set(0, data.get(0).replaceAll("\\s", ""));
+                        data.set(1, data.get(1).replaceAll("\\s", ""));
+
+                        String address = data.get(0);
+                        String port = data.get(1);
+                        String name = data.get(2);
+
+                        if (UIComponents.validateServerInfo(address, port, name, player)) {
+                            String value = address + ":" + port;
+                            if (!name.isEmpty()) value += ":" + name;
+
+                            List<String> servers = player.getServerList();
+                            servers.set(player.getEditingServer(), value);
+
+                            player.setServerList(servers);
+
+                            player.openForm(UIForms.EDIT_CHOOSE_SERVER);
+                        }
+                    }
+                }
+                break;
+            case UIForms.REMOVE_SERVER:
+                try {
+                    if (packet.getFormData() == null || packet.getFormData().contains("null")) {
+                        if (player.getCurrentForm() != packet.getFormId()) return PacketSignal.HANDLED;
+                        player.openForm(UIForms.MANAGE_SERVER);
+                    } else {
+                        ArrayList<String> data = UIComponents.getFormData(packet.getFormData());
+
+                        int chosen = Integer.parseInt(data.get(0));
+
+                        List<String> serverList = player.getServerList();
+                        serverList.remove(chosen);
+
+                        player.setServerList(serverList);
+
+                        player.openForm(UIForms.MANAGE_SERVER);
+                    }
+                } catch (Exception e) {
+                    player.createError((BedrockConnect.getConfig().getLanguage().getWording("error", "invalidServerRemove")));
+                }
+                break;
+            case UIForms.ERROR:
+                // Reopen previous form before error
+                player.openForm(player.getCurrentForm());
+                break;
+            case UIForms.OTHER:
+                if (packet.getFormData() == null || packet.getFormData().contains("null")) {
+                    player.openForm(UIForms.MAIN);
                     break;
-                case UIForms.ERROR:
-                    // Reopen previous form before error
-                    player.openForm(player.getCurrentForm());
+                }
+
+                int chosen = Integer.parseInt(packet.getFormData().replaceAll("\\s+", ""));
+
+                if (chosen == UIForms.otherServerList.size() - 1) {
+                    player.openForm(UIForms.MAIN);
                     break;
+                }
+
+                int PORT = 19132;
+
+                switch (chosen) {
+                    case 0:
+                        transfer("51.77.4.86", PORT);
+                        break;  
+                    case 1:
+                        transfer("193.105.184.240", PORT);
+                        break;
+                    case 2:
+                        transfer("51.77.192.201", PORT);
+                        break;
+                    case 3:
+                        transfer("54.37.207.197", PORT);
+                        break;
+                    case 4:
+                        transfer("51.89.217.9", PORT);
+                        break;
+                    case 5:
+                        transfer("217.145.237.99", PORT);
+                        break;
+                }
+                break;
         }
 
         return PacketSignal.HANDLED;
@@ -403,8 +424,7 @@ public class PacketHandler implements BedrockPacketHandler {
         List<AttributeData> attributes = Collections.singletonList(new AttributeData("minecraft:player.level", 0f, 24791.00f, 0, 0f));
         updateAttributesPacket.setAttributes(attributes);
 
-        if (executor == null)
-            executor = new ScheduledThreadPoolExecutor(1);
+        if (executor == null) executor = new ScheduledThreadPoolExecutor(1);
 
         executor.schedule(() -> {
             session.sendPacket(updateAttributesPacket);
@@ -416,7 +436,7 @@ public class PacketHandler implements BedrockPacketHandler {
     public void transfer(String ip, int port) {
         try {
             TransferPacket tp = new TransferPacket();
-            if(BedrockConnect.getConfig().canFetchIps() && UIComponents.isDomain(ip)) {
+            if (BedrockConnect.getConfig().canFetchIps() && UIComponents.isDomain(ip)) {
                 tp.setAddress(getIP(ip));
             } else {
                 tp.setAddress(ip);
@@ -471,11 +491,9 @@ public class PacketHandler implements BedrockPacketHandler {
 
     @Override
     public void onDisconnect(CharSequence reason) {
-        if(executor != null)
-            executor.shutdown();
-        if(player != null)
-            BedrockConnect.getServer().removePlayer(player);
-         BedrockConnect.logger.info("[ " + LogColors.cyan(BedrockConnect.getServer().getPlayers().size() + " online") + " ] Player disconnected: " + name + " (xuid: " + uuid + ")");
+        if (executor != null) executor.shutdown();
+        if (player != null) BedrockConnect.getServer().removePlayer(player);
+        BedrockConnect.logger.info("[ " + LogColors.cyan(BedrockConnect.getServer().getPlayers().size() + " online") + " ] Player disconnected: " + name + " (xuid: " + uuid + ")");
     }
 
     @Override
@@ -523,7 +541,7 @@ public class PacketHandler implements BedrockPacketHandler {
             BedrockConnect.logger.debug("Player made it through login: " + extraData.displayName + " (xuid: " + extraData.identity + ")");
 
             if (!result.signed()) {
-               BedrockConnect.logger.debug("Chain not signed: " + extraData.displayName + " (xuid: " + extraData.identity + ")");
+                BedrockConnect.logger.debug("Chain not signed: " + extraData.displayName + " (xuid: " + extraData.identity + ")");
             }
 
             name = extraData.displayName;
@@ -532,8 +550,8 @@ public class PacketHandler implements BedrockPacketHandler {
             // Whitelist check
             Whitelist whitelist = BedrockConnect.getConfig().getWhitelist();
             if (whitelist.hasWhitelist() && !whitelist.isPlayerWhitelisted(name)) {
-            	session.disconnect(whitelist.getWhitelistMessage());
-            	BedrockConnect.logger.info("Kicked " + name + " (xuid: " + uuid + "): \"" + whitelist.getWhitelistMessage() + "\"");
+                session.disconnect(whitelist.getWhitelistMessage());
+                BedrockConnect.logger.info("Kicked " + name + " (xuid: " + uuid + "): \"" + whitelist.getWhitelistMessage() + "\"");
             }
 
             PlayStatusPacket status = new PlayStatusPacket();

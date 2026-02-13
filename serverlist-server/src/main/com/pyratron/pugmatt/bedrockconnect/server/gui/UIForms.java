@@ -21,6 +21,7 @@ public class UIForms {
     public static JsonArray manageListButtons = new JsonArray();
     public static JsonArray nationsGloryServerList = new JsonArray();
     public static JsonArray otherServer = new JsonArray();
+    public static JsonArray otherServerList = new JsonArray();
 
 
     public static final int DEFAULT_PORT = 19132;
@@ -37,14 +38,23 @@ public class UIForms {
         manageListButtons.add(UIComponents.createButton(BedrockConnect.getConfig().getLanguage().getWording("manage", "editBtn")));
         manageListButtons.add(UIComponents.createButton(removeBtnText));
 
-        nationsGloryServerList.add(UIComponents.createButton("Hub NationsGlory", "https://i.imgur.com/GXhR3Uw.png", "url"));
-        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Alpha", "https://i.imgur.com/Q17hzZC.png", "url"));
-        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Sigma", "https://i.imgur.com/vXlraL8.png", "url"));
-        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Omega", "https://i.imgur.com/GLBka1E.png", "url"));
-        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Delta", "https://i.imgur.com/5scclnU.png", "url"));
-        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Epsilon", "https://i.imgur.com/6SVqll7.png", "url"));
+        nationsGloryServerList.add(UIComponents.createButton("Hub NationsGlory", "https://i.imgur.com/iaj4mRJ.png", "url"));
+        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Alpha", "https://i.imgur.com/TP9YWiN.png", "url"));
+        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Sigma", "https://i.imgur.com/WkAzqyQ.png", "url"));
+        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Omega", "https://i.imgur.com/VncbPZN.png", "url"));
+        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Delta", "https://i.imgur.com/3SrPav4.png", "url"));
+        nationsGloryServerList.add(UIComponents.createButton("NationsGlory Epsilon", "https://i.imgur.com/WA43BaH.png", "url"));
 
         otherServer.add(UIComponents.createButton("Other Server"));
+
+        otherServerList.add(UIComponents.createButton("The Hive", "https://i.imgur.com/RfxfPGz.png", "url"));
+        otherServerList.add(UIComponents.createButton("CubeCraft", "https://i.imgur.com/aFH1NUr.png", "url"));
+        otherServerList.add(UIComponents.createButton("Lifeboat", "https://i.imgur.com/LoI7bYx.png", "url"));
+        otherServerList.add(UIComponents.createButton("Mineville", "https://i.imgur.com/0K4TDut.png", "url"));
+        otherServerList.add(UIComponents.createButton("Galaxite", "https://i.imgur.com/VxXO8Of.png", "url"));
+        otherServerList.add(UIComponents.createButton("Enchanted Dragons", "https://i.imgur.com/1Fh9CBf.png", "url"));
+        otherServerList.add(UIComponents.createButton("Back"));
+
     }
 
     public static ModalFormRequestPacket createMain(List<String> servers, BedrockServerSession session) {
@@ -84,6 +94,20 @@ public class UIForms {
 
         fixIcons(session);
 
+        return mf;
+    }
+
+    public static ModalFormRequestPacket createOtherList() {
+        ModalFormRequestPacket mf = new ModalFormRequestPacket();
+        mf.setFormId(OTHER);
+        JsonObject out = UIComponents.createForm("form", "Other Server");
+        out.addProperty("content", "");
+
+        JsonArray buttons = new JsonArray();
+        buttons.addAll(otherServerList);
+        out.add("buttons", buttons);
+
+        mf.setFormData(out.toString());
         return mf;
     }
 
@@ -150,14 +174,14 @@ public class UIForms {
             }
         }
 
-        if(btnId == 0) {
-            return MainFormButton.EXIT;
-        } else if(serverIndex + 1 > playerServers.size() + customServers.length) {
-            return MainFormButton.NG_SERVER;
-        } else if (serverIndex + 1 > playerServers.size() && serverIndex - playerServers.size() < customServers.length) {
-            return MainFormButton.CUSTOM_SERVER;
-        } else {
+        if(serverIndex < playerServers.size()) {
             return MainFormButton.USER_SERVER;
+        } else if(serverIndex < playerServers.size() + customServers.length) {
+            return MainFormButton.CUSTOM_SERVER;
+        } else if(serverIndex < playerServers.size() + customServers.length + nationsGloryServerList.size()) {
+            return MainFormButton.NG_SERVER;
+        } else {
+            return MainFormButton.OTHER_BUTTON;
         }
     }
 
@@ -169,6 +193,15 @@ public class UIForms {
                 return ManageFormButton.EDIT;
             case 2:
                 return ManageFormButton.REMOVE;
+        }
+        return null;
+    }
+    public static OtherFormButton getOtherFormButton(int btnId) {
+        switch (btnId) {
+            case 0:
+                return OtherFormButton.SERVER;
+            case 1:
+                return OtherFormButton.BACK;
         }
         return null;
     }
@@ -307,23 +340,4 @@ public class UIForms {
         mf.setFormData(form.toString());
         return mf;
     }
-    public static final int OTHER_SERVER_FORM = 20;
-
-    public static ModalFormRequestPacket createOtherServerForm() {
-        ModalFormRequestPacket mf = new ModalFormRequestPacket();
-        mf.setFormId(OTHER_SERVER_FORM);
-
-        JsonObject form = UIComponents.createForm("form", "Other Servers");
-        form.addProperty("content", "Choisis un serveur");
-
-        JsonArray buttons = new JsonArray();
-        buttons.add(UIComponents.createButton("Serveur 1"));
-        buttons.add(UIComponents.createButton("Retour"));
-
-        form.add("buttons", buttons);
-
-        mf.setFormData(form.toString());
-        return mf;
-    }
-
 }
